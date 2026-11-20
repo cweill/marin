@@ -8,6 +8,7 @@ from functools import cache, partial
 
 from experiments.evaluation.benchmark import EvaluationBenchmark, ProtocolVariant
 from experiments.evaluation.benchmarks import (
+    arc_agi,
     biomedical,
     code,
     commonsense,
@@ -75,6 +76,7 @@ def evaluation_benchmarks() -> dict[str, EvaluationBenchmark]:
             nupa,
             supergpqa,
             physics_verified,
+            arc_agi,
         )
         for benchmark in family.benchmarks()
     ]
