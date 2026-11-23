@@ -33,6 +33,7 @@ from shellbox.backends.local.machine import (
     SystemDirectories,
     _archive,
     _submounts,
+    _working_bwrap,
 )
 from shellbox.backends.local.python_environment import (
     PythonEnvironment,
@@ -128,6 +129,15 @@ def test_local_factory_reports_unsupported_host(monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")
     with pytest.raises(SandboxUnavailable):
         LocalMachineFactory()
+
+
+def test_sandbox_unavailable_error_names_the_required_container_profile(monkeypatch):
+    monkeypatch.setattr(
+        "shellbox.backends.local.machine._prepare_sandbox",
+        lambda bwrap, system_directories, mounts, environment: "unshare: Operation not permitted",
+    )
+    with pytest.raises(SandboxUnavailable, match="CONTAINER_PROFILE_PRIVILEGED"):
+        _working_bwrap((Path("/usr/bin/bwrap"),), SystemDirectories.READ_ONLY, (), {})
 
 
 def test_local_numeric_limits_allow_execution_without_delegation(undelegated_factory):

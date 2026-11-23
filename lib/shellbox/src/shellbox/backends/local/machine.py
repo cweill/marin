@@ -380,7 +380,8 @@ def _working_bwrap(
     raise SandboxUnavailable(
         "No bwrap can sandbox commands on this host. A root process needs CAP_SYS_ADMIN, CAP_NET_ADMIN, no "
         "AppArmor confinement and a seccomp filter that allows pivot_root; another user needs unprivileged "
-        "user namespaces. " + overlay + "; ".join(errors)
+        "user namespaces. On Iris, run the job with the CONTAINER_PROFILE_PRIVILEGED container profile, which "
+        "grants these capabilities (submitting it needs admin authorization). " + overlay + "; ".join(errors)
     )
 
 
