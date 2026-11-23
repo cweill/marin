@@ -15,6 +15,14 @@ from typing import Any
 from verifyit.grade import GradingInfraError, InvalidTask, Reward, Status, infra_error, invalid_task
 from verifyit.spec import Constraint, JudgeSpec, parse_spec
 
+JUDGE_SPEC_PATH = Path("/tests/judge.toml")
+
+
+def judge_spec() -> JudgeSpec:
+    judge = parse_spec(JUDGE_SPEC_PATH.read_text())
+    assert isinstance(judge, JudgeSpec)
+    return judge
+
 
 def score(scorer: str, config: dict[str, Any], response: str) -> Reward:
     # Scorers load only the dependencies of the selected dataset's environment.
@@ -53,8 +61,7 @@ def score(scorer: str, config: dict[str, Any], response: str) -> Reward:
             return result
         from verifyit.modes.grade_judge import grade_judge_candidate
 
-        judge = parse_spec(Path("/tests/judge.toml").read_text())
-        assert isinstance(judge, JudgeSpec)
+        judge = judge_spec()
         verdict = grade_judge_candidate(judge, answer)
         return Reward(verdict.reward, verdict.status, {**verdict.detail, "extracted": answer, "method": "llm_judge"})
     if scorer == "facts_grounding":
@@ -62,8 +69,7 @@ def score(scorer: str, config: dict[str, Any], response: str) -> Reward:
 
         from .facts_grounding import grade_facts_grounding
 
-        judge = parse_spec(Path("/tests/judge.toml").read_text())
-        assert isinstance(judge, JudgeSpec)
+        judge = judge_spec()
         return grade_facts_grounding(
             config["full_prompt"],
             judge.question,
@@ -76,8 +82,7 @@ def score(scorer: str, config: dict[str, Any], response: str) -> Reward:
 
         from .facts_parametric import grade_facts_parametric
 
-        judge = parse_spec(Path("/tests/judge.toml").read_text())
-        assert isinstance(judge, JudgeSpec)
+        judge = judge_spec()
         return grade_facts_parametric(
             judge.question, judge.references[0], response, lambda messages: judge_reply(judge, messages)
         )
