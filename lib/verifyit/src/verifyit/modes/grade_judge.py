@@ -164,8 +164,7 @@ class _LabelCompletion:
     response_model: str | None
     response_id: str | None
     finish_reason: str | None
-    transport_attempts: tuple[dict[str, Any], ...]
-    request: dict[str, Any]
+    transport_attempts: tuple[dict[str, Any], ...] = ()
     usage: dict[str, Any] | None = None
 
 
@@ -531,8 +530,7 @@ def _judged_answer(
             "finish_reason": completion.finish_reason,
             "transport_attempts": completion.transport_attempts,
             "completion": completion.text,
-            "judge_request": completion.request,
-            "usage": completion.usage,
+            "judge_request": {"model": model, "messages": messages, "max_completion_tokens": budget, "temperature": 0.0},
         }
         if completion.incomplete:
             if index + 1 < len(budgets):
@@ -632,23 +630,15 @@ def _label_completion(
                 response.id,
                 choice.finish_reason,
                 attempts,
-                request,
                 usage,
             )
         choice = _completion_choice(response)
         if choice.finish_reason == "length":
             return _LabelCompletion(
-                choice.message.content or "",
-                True,
-                response.model,
-                response.id,
-                choice.finish_reason,
-                attempts,
-                request,
-                usage,
+                choice.message.content or "", True, response.model, response.id, choice.finish_reason, attempts, usage
             )
         return _LabelCompletion(
-            _completed_text(choice), False, response.model, response.id, choice.finish_reason, attempts, request, usage
+            _completed_text(choice), False, response.model, response.id, choice.finish_reason, attempts, usage
         )
     options = {"reasoning": {"effort": spec.reasoning_effort}} if spec.reasoning_effort else {}
     request = {
@@ -667,9 +657,7 @@ def _label_completion(
     if not isinstance(payload, dict) or payload.get("error") is not None:
         raise RuntimeError("judge transport returned an error")
     if payload.get("status") == "incomplete" and payload.get("incomplete_details") == {"reason": "max_output_tokens"}:
-        return _LabelCompletion(
-            "", True, payload.get("model"), payload.get("id"), payload.get("status"), attempts, request
-        )
+        return _LabelCompletion("", True, payload.get("model"), payload.get("id"), payload.get("status"), attempts)
     if payload.get("status") != "completed" or payload.get("incomplete_details") is not None:
         raise RuntimeError("judge response is incomplete")
     output = payload.get("output")
@@ -690,9 +678,7 @@ def _label_completion(
     text = block.get("text")
     if block.get("type") != "output_text" or not isinstance(text, str) or not text.strip():
         raise RuntimeError("judge output is empty or contains a refusal")
-    return _LabelCompletion(
-        text, False, payload.get("model"), payload.get("id"), payload.get("status"), attempts, request
-    )
+    return _LabelCompletion(text, False, payload.get("model"), payload.get("id"), payload.get("status"), attempts)
 
 
 def _retry_after(error: openai.APIStatusError) -> float:
