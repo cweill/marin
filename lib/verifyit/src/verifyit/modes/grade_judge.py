@@ -231,8 +231,10 @@ def _validate_spec(spec: JudgeSpec) -> _ValidatedJudgeSpec:
         _validate_answers_spec(spec, references)
     if spec.rubric == RUBRIC_PAIRWISE:
         _validate_pairwise_spec(spec)
-    elif spec.label_weights or spec.verdict_patterns:
-        raise InvalidTask("label weights and verdict patterns apply only to pairwise judges")
+    elif spec.label_weights:
+        raise InvalidTask("label weights apply only to pairwise judges")
+    elif spec.verdict_patterns and spec.rubric != RUBRIC_LABELS:
+        raise InvalidTask("verdict patterns apply only to label and pairwise judges")
     for budget in (spec.max_completion_tokens, spec.incomplete_retry_tokens):
         if type(budget) is not int or budget < 0:
             raise InvalidTask("judge token budgets must be nonnegative integers")
@@ -377,6 +379,7 @@ def _validate_label_spec(spec: JudgeSpec, references: tuple[str, ...]) -> None:
         raise InvalidTask("label_scan must be literal, lines or whole")
     if type(spec.strip_reasoning_blocks) is not bool:
         raise InvalidTask("strip_reasoning_blocks must be boolean")
+    _validate_verdict_patterns(spec)
     _validate_verdict_labels(spec)
     if spec.label_metrics and set(spec.label_metrics) != set(spec.label_scores):
         raise InvalidTask("label metrics must cover every declared verdict")
@@ -409,13 +412,7 @@ def _validate_pairwise_spec(spec: JudgeSpec) -> None:
         raise InvalidTask("pairwise rubric reports its own metric and has no exact gate")
     if not spec.verdict_patterns:
         raise InvalidTask("pairwise rubric requires verdict patterns")
-    for pattern in spec.verdict_patterns:
-        try:
-            groups = re.compile(pattern).groups
-        except re.error as error:
-            raise InvalidTask(f"malformed verdict pattern {pattern!r}") from error
-        if groups != 1:
-            raise InvalidTask("each verdict pattern must capture exactly one group")
+    _validate_verdict_patterns(spec)
     _validate_verdict_labels(spec)
     if not spec.label_scores:
         raise InvalidTask("pairwise rubric requires verdict labels")
@@ -426,6 +423,16 @@ def _validate_pairwise_spec(spec: JudgeSpec) -> None:
             raise InvalidTask("label weights must be finite and positive")
     if not {"answer_a", "answer_b"} <= _template_fields(spec, PAIRWISE_FIELDS):
         raise InvalidTask("pairwise template must include answer_a and answer_b")
+
+
+def _validate_verdict_patterns(spec: JudgeSpec) -> None:
+    for pattern in spec.verdict_patterns:
+        try:
+            groups = re.compile(pattern).groups
+        except re.error as error:
+            raise InvalidTask(f"malformed verdict pattern {pattern!r}") from error
+        if groups != 1:
+            raise InvalidTask("each verdict pattern must capture exactly one group")
 
 
 def _validate_verdict_labels(spec: JudgeSpec) -> None:
@@ -491,7 +498,11 @@ def _judge_labels(spec: JudgeSpec, reference: str, candidate: str, client: opena
     labels = _case_normalized(spec, spec.label_scores)
     label_metrics = _case_normalized(spec, spec.label_metrics)
     answer, detail = _judged_answer(spec, client, model, messages, temperature=0.0)
-    if spec.label_scan == "whole":
+    if spec.verdict_patterns:
+        # The judge's explanation may name other labels; its last verdict match decides.
+        final = _last_verdict(answer, spec.verdict_patterns)
+        observed = {final}
+    elif spec.label_scan == "whole":
         final = answer
         observed = {answer}
     else:
@@ -500,7 +511,7 @@ def _judge_labels(spec: JudgeSpec, reference: str, candidate: str, client: opena
         observed = {
             label for label in labels if (label in completed_lines if spec.label_scan == "lines" else label in answer)
         }
-    if final not in labels or observed != {final}:
+    if final is None or final not in labels or observed != {final}:
         raise GradingInfraError("judge returned malformed or contradictory verdict labels", **detail)
     detail.update(verdict=final, reasoning=_reasoning(answer))
     if label_metrics:
@@ -565,7 +576,7 @@ def _judge_pairwise(spec: JudgeSpec, baseline: str, candidate: str, client: open
     for candidate_position, answer_a, answer_b in (("B", baseline, candidate), ("A", candidate, baseline)):
         messages = _judge_messages(spec, {"question": spec.question, "answer_a": answer_a, "answer_b": answer_b})
         answer, detail = _judged_answer(spec, client, model, messages, temperature=0.0)
-        verdict = _pairwise_verdict(answer, spec.verdict_patterns)
+        verdict = _last_verdict(answer, spec.verdict_patterns)
         if verdict is None or verdict not in labels:
             raise GradingInfraError("judge returned no recognized pairwise verdict", verdict=verdict, **detail)
         score_a = float(labels[verdict])
@@ -644,8 +655,8 @@ def _answer_verdicts(reply: str, count: int) -> tuple[list[_AnswerVerdict], int 
     return verdicts, confidence
 
 
-def _pairwise_verdict(reply: str, patterns: tuple[str, ...]) -> str | None:
-    """The last nonempty match of the first pattern with one, as Arena-Hard parses verdicts."""
+def _last_verdict(reply: str, patterns: tuple[str, ...]) -> str | None:
+    """The last nonempty match of the first pattern with one, as Arena-Hard parses pairwise verdicts."""
     for pattern in patterns:
         matches = [match for match in re.findall(pattern, reply) if match]
         if matches:

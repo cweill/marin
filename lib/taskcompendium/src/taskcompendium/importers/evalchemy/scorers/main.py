@@ -77,15 +77,6 @@ def score(scorer: str, config: dict[str, Any], response: str) -> Reward:
             response,
             lambda messages: judge_reply(judge, messages),
         )
-    if scorer == "facts_parametric":
-        from verifyit.modes.grade_judge import judge_reply
-
-        from .facts_parametric import grade_facts_parametric
-
-        judge = judge_spec()
-        return grade_facts_parametric(
-            judge.question, judge.references[0], response, lambda messages: judge_reply(judge, messages)
-        )
     if scorer in {"gpqa", "mmlu_pro"}:
         from .choices import grade_gpqa_answer, grade_mmlu_answer
 
