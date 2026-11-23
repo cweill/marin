@@ -27,7 +27,7 @@ from taskcompendium.identity import canonical_sha256
 from taskcompendium.pipeline.source_processing import SourceProcessingMode
 
 from experiments.evaluation.catalog import evaluation_benchmarks
-from experiments.evaluation.preparation import prepare_evaluation
+from experiments.evaluation.preparation import EvaluationCorpusRecipe, prepare_evaluation
 from experiments.post_training.task_curation.campaign import CampaignRuntime
 from experiments.post_training.task_curation.config import PipelineOptions
 
@@ -59,7 +59,8 @@ def load_evaluations(path: Path) -> tuple[EvaluationSelection, ...]:
     return tuple(EvaluationSelection.model_validate({"label": name, **entry}) for name, entry in entries.items())
 
 
-def resolve_selection(selection: EvaluationSelection, model_format: PromptFormat | None) -> ResolvedEvaluationSelection:
+def selection_dataset(selection: EvaluationSelection, model_format: PromptFormat | None) -> EvaluationCorpusRecipe:
+    """Resolve a selection to the catalog dataset used for this model format."""
     catalog = evaluation_benchmarks()
     if selection.benchmark not in catalog:
         raise ValueError(f"Unknown evaluation benchmark: {selection.benchmark}")
@@ -68,6 +69,11 @@ def resolve_selection(selection: EvaluationSelection, model_format: PromptFormat
     )
     dataset = sources[0].config
     assert dataset is not None
+    return dataset
+
+
+def resolve_selection(selection: EvaluationSelection, model_format: PromptFormat | None) -> ResolvedEvaluationSelection:
+    dataset = selection_dataset(selection, model_format)
     form = {"chat_generation": PromptFormat.CHAT, "text_generation": PromptFormat.COMPLETION}.get(
         dataset.protocol.operation
     )

@@ -4,12 +4,12 @@
 """The 2026-11-20 trial policy resolves to runnable catalog selections and Harbor configs for every candidate."""
 
 import pytest
-from evalrecords.records import EvaluationSelection
+from evalrecords.records import EvaluationSelection, PromptFormat
 from marin.evaluation.harbor.driver_config import preflight_harbor_configs
 
+from experiments.evaluation.curated import selection_dataset
 from experiments.evaluation.evals import HarborDefinition, harbor_model_agent_kwargs
 from experiments.evaluation.policies.marin_2026_11_20_trial.policy import POLICY
-from experiments.evaluation.policy.cli import selection_dataset
 from experiments.evaluation.policy.resolve import resolve
 
 CANDIDATES = pytest.mark.parametrize("candidate", POLICY.candidates, ids=lambda candidate: candidate.name)
@@ -23,7 +23,8 @@ def test_taskspec_contexts_are_the_ones_the_server_and_protocol_enforce(candidat
         selection = item.evaluation.definition
         if not isinstance(selection, EvaluationSelection):
             continue
-        config = selection_dataset(selection, candidate.model)
+        model_format = PromptFormat.CHAT if candidate.model.apply_chat_template else PromptFormat.COMPLETION
+        config = selection_dataset(selection, model_format)
         assert item.context == (config.protocol.context_window or served), item.evaluation.name
 
 

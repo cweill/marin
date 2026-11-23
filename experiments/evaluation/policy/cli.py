@@ -12,13 +12,11 @@ from dataclasses import dataclass
 import click
 import yaml
 from evalrecords.records import EvaluationSelection, PromptFormat
-from marin.evaluation.model_config import ModelConfig
 
-from experiments.evaluation.catalog import evaluation_benchmarks
+from experiments.evaluation.curated import selection_dataset
 from experiments.evaluation.policies import POLICIES
 from experiments.evaluation.policy.resolve import ResolvedPolicyEvaluation, resolve
 from experiments.evaluation.policy.schema import EvalPolicy, PolicyCandidate
-from experiments.evaluation.preparation import EvaluationCorpusRecipe
 
 _COLUMNS = ("evaluation", "context", "output", "seed", "runs as", "think", "trials", "cap", "judge", "metric")
 
@@ -43,19 +41,9 @@ def _thinking(kwargs: Mapping[str, object]) -> str:
     return "on" if kwargs["enable_thinking"] else "off"
 
 
-def selection_dataset(selection: EvaluationSelection, model: ModelConfig) -> EvaluationCorpusRecipe:
-    """The catalog dataset, with its protocol, that a selection runs as for this model."""
-    model_format = PromptFormat.CHAT if model.apply_chat_template else PromptFormat.COMPLETION
-    sources = evaluation_benchmarks()[selection.benchmark].resolve(
-        selection.protocol, selection.num_fewshot, selection.prompt_format, model_format=model_format
-    )
-    config = sources[0].config
-    assert config is not None
-    return config
-
-
 def _taskspec_row(item: ResolvedPolicyEvaluation, selection: EvaluationSelection) -> _Row:
-    config = selection_dataset(selection, item.candidate.model)
+    model_format = PromptFormat.CHAT if item.candidate.model.apply_chat_template else PromptFormat.COMPLETION
+    config = selection_dataset(selection, model_format)
     protocol = config.protocol
     sampling = protocol.sampling
     judge = selection.run.judge
